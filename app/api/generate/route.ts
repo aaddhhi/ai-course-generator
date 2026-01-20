@@ -1,40 +1,60 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// We use the variable name GEMINI_API_KEY here, NOT the actual key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-
 export async function POST(req: Request) {
   try {
-    // We now extract both 'topic' and 'level' from the request
-    const { topic, level } = await req.json();
-    
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is missing");
+    }
 
-    // This prompt now uses the 'level' to make the course adaptive
-   const prompt = `Act as an expert course creator. Create a 3-module ${level} level course on the topic: "${topic}". 
-For each module, include at least 3 specific sub-lessons.
-Return strictly as JSON:
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+    const { topic, level } = await req.json();
+
+    if (!topic || !level) {
+      return NextResponse.json(
+        { error: "Topic or level missing" },
+        { status: 400 }
+      );
+    }
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+    });
+
+    const prompt = `
+Act as an expert course creator.
+Create a 3-module ${level} level course on "${topic}".
+
+Return ONLY valid JSON in this format:
 {
   "title": "Course Title",
   "modules": [
-    { 
-      "name": "Module Name", 
-      "lessons": ["Lesson 1 Title", "Lesson 2 Title", "Lesson 3 Title"] 
+    {
+      "name": "Module Name",
+      "lessons": ["Lesson 1", "Lesson 2", "Lesson 3"]
     }
   ]
-}`;
+}
+`;
 
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    // Cleaning the response to ensure valid JSON
-    const cleanedText = text.replace(/```json|```/g, "").trim();
-    
-    return NextResponse.json(JSON.parse(cleanedText));
-  } catch (error) {
-    console.error("API Error:", error);
-    return NextResponse.json({ error: "Failed to generate course" }, { status: 500 });
+    const text = result.response.text();
+
+    console.log("Gemini raw response:", text);
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("Invalid JSON from Gemini");
+    }
+
+    return NextResponse.json(JSON.parse(jsonMatch[0]));
+  } catch (error: any) {
+    console.error("API ERROR:", error.message);
+
+    return NextResponse.json(
+      { error: error.message || "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
