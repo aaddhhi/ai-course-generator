@@ -1,34 +1,23 @@
+// 👇 PASTE THIS LINE AT THE VERY TOP
 export const runtime = "nodejs";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
+// Use environment variable (do NOT hardcode key)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
 export async function POST(req: Request) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is missing");
-    }
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
     const { topic, level } = await req.json();
-
-    if (!topic || !level) {
-      return NextResponse.json(
-        { error: "Topic or level missing" },
-        { status: 400 }
-      );
-    }
 
     const model = genAI.getGenerativeModel({
       model: "gemini-1.5-flash",
     });
 
-    const prompt = `
-Act as an expert course creator.
-Create a 3-module ${level} level course on "${topic}".
-
-Return ONLY valid JSON in this format:
+    const prompt = `Act as an expert course creator. Create a 3-module ${level} level course on the topic: "${topic}".
+For each module, include at least 3 specific sub-lessons.
+Return strictly as JSON:
 {
   "title": "Course Title",
   "modules": [
@@ -37,27 +26,29 @@ Return ONLY valid JSON in this format:
       "lessons": ["Lesson 1", "Lesson 2", "Lesson 3"]
     }
   ]
-}
-`;
+}`;
 
     const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const response = await result.response;
+    const text = response.text();
 
-    console.log("Gemini raw response:", text);
+    const cleanedText = text.replace(/```json|```/g, "").trim();
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("Invalid JSON from Gemini");
+    // ✅ Safe JSON parsing
+    try {
+      return NextResponse.json(JSON.parse(cleanedText));
+    } catch {
+      console.error("JSON parse failed:", cleanedText);
+      return NextResponse.json(
+        { error: "Invalid AI response format" },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json(JSON.parse(jsonMatch[0]));
-  } catch (error: any) {
-    console.error("API ERROR:", error.message);
-
+  } catch (error) {
+    console.error("API Error:", error);
     return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Failed to generate course" },
       { status: 500 }
     );
   }
 }
-
