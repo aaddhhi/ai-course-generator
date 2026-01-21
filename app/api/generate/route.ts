@@ -11,9 +11,8 @@ export async function POST(req: Request) {
   try {
     const { topic, level } = await req.json();
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-    });
+    // Replace your existing model initialization with this:
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `Act as an expert course creator. Create a 3-module ${level} level course on the topic: "${topic}".
 For each module, include at least 3 specific sub-lessons.
@@ -28,7 +27,7 @@ Return strictly as JSON:
   ]
 }`;
 
-    const result = await model.generateContent(prompt);
+    const result = await model?.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
 
